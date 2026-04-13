@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Акции по станциям метро</title>
+
+  <!-- Leaflet CSS -->
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity=""
+    crossorigin="anonymous"
+  />
+
+  <style>
+    body {
+      font-family: sans-serif;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      height: 100vh;
+    }
+
+    #sidebar {
+      width: 350px;
+      border-right: 1px solid #ccc;
+      padding: 15px;
+      overflow-y: auto;
+    }
+
+    #map {
+      flex: 1;
+    }
+
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      font-size: 13px;
+    }
+
+    th, td {
+      border: 1px solid #ccc;
+      padding: 4px 6px;
+      text-align: left;
+    }
+
+    th {
+      background: #f0f0f0;
+      position: sticky;
+      top: 0;
+    }
+
+    td:nth-child(1) { width: 40px; }
+    td:nth-child(3) { max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    td:nth-child(4) { width: 40px; text-align: center; }
+
+    .fresh {
+      background: #d4ffd4;
+    }
+
+    .old {
+      background: #ffe4e4;
+    }
+  </style>
+</head>
+<body>
+
+<div id="sidebar">
+  <table id="promos-table">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Station</th>
+        <th>Note</th>
+        <th>Age</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+</div>
+
+<div id="map"></div>
+
+<!-- Leaflet JS -->
+<script
+  src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+  integrity=""
+  crossorigin="anonymous"
+></script>
+
+<script>
+  // Инициализация карты
+  const map = L.map('map').setView([55.751244, 37.618423], 11); // Москва
+
+  // Подложка карты
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; OpenStreetMap contributors'
+  }).addTo(map);
+
+  let markersLayer = L.layerGroup().addTo(map);
+
+  async function loadPromos() {
+    const res = await fetch('/api/promos/active');
+    if (!res.ok) {
+      console.error('Ошибка загрузки /api/promos/active');
+      return;
+    }
+
+    const promos = await res.json();
+
+    // Обновляем таблицу
+    const tbody = document.querySelector('#promos-table tbody');
+    tbody.innerHTML = '';
+
+    // Очищаем слой маркеров
+    markersLayer.clearLayers();
+
+    promos.forEach(p => {
+      const tr = document.createElement('tr');
+      const note = p.SourceMessageID || '';
+      tr.innerHTML = `
+        <td>${p.ID}</td>
+        <td>${p.StationName}</td>
+        <td>${note}</td>
+        <td>${p.AgeMinutes}</td>
+      `;
+      tbody.appendChild(tr);
+
+      // Маркер на карте (если есть координаты)
+      if (p.Lat && p.Lon) {
+        const color =
+          p.AgeMinutes <= 30 ? 'green' :
+          p.AgeMinutes <= 120 ? 'orange' :
+          'red';
+
+        const icon = L.divIcon({
+          className: 'custom-icon',
+          html: `<div style="
+            width: 16px;
+            height: 16px;
+            background: ${color};
+            border-radius: 50%;
+            border: 2px solid #333;
+          "></div>`
+        });
+
+        const marker = L.marker([p.Lat, p.Lon], { icon }).addTo(markersLayer);
+
+        let popupContent = `
+          <b>${p.StationName}</b><br>
+          Минут назад: ${p.AgeMinutes}<br>
+        `;
+        if (p.SourceMessageID) {
+          popupContent += `${p.SourceMessageID}<br>`;
+        }
+
+        marker.bindPopup(popupContent);
+      }
+    });
+  }
+
+  loadPromos();
+  setInterval(loadPromos, 10000);
+</script>
+
+</body>
+</html>
